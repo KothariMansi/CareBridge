@@ -26,10 +26,10 @@ func AbortWithError(c *gin.Context, status int, code, message string) {
 
 // NotFound is the handler from unknown routes.
 func NotFound(c *gin.Context) {
-	AbortWithError(c, http.StatusNotFound, "not_found", "The requested resource not found")
+	AbortWithError(c, http.StatusNotFound, "NOT_FOUND", "The requested resource not found")
 }
 
 // MethodNotAllowed is the handler for known routes called with the wrong methods.
 func MethodNotAllowed(c *gin.Context) {
-	AbortWithError(c, http.StatusMethodNotAllowed, "method_not_allowed", "This method is not allowed for the requested resource")
+	AbortWithError(c, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "This method is not allowed for the requested resource")
 }
