@@ -11,13 +11,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/KothariMansi/carebridge/internal/config"
 	"github.com/gin-gonic/gin"
 )
 
-const (
-	listenAddr      = ":7564"
-	shutdownTimeout = 15 * time.Second
-)
+var shutdownTimeout = 15 * time.Second
 
 func main() {
 	if err := run(); err != nil {
@@ -27,6 +25,17 @@ func main() {
 }
 
 func run() error {
+	// ".env" is read from the working directory, so start the server from the
+	// repository root. In production there is no .env file and the real
+	// environment variables are used.
+	cfg, err := config.Load(".env")
+	if err != nil {
+		return err
+	}
+
+	// %v uses Config.String(), which masks the database password.
+	log.Printf("configuration loaded: %v", cfg)
+
 	// Release mode silences Gin's debug banner and route table.
 	gin.SetMode(gin.ReleaseMode)
 
@@ -36,7 +45,7 @@ func run() error {
 	}
 
 	server := &http.Server{
-		Addr:    listenAddr,
+		Addr:    cfg.Addr(),
 		Handler: router,
 
 		// Without timeouts a slow or malicious client can hold a connection open forever.
