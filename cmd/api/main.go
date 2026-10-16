@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,14 +12,20 @@ import (
 	"time"
 
 	"github.com/KothariMansi/carebridge/internal/config"
+	"github.com/KothariMansi/carebridge/internal/platform/logging"
 	"github.com/gin-gonic/gin"
 )
 
-var shutdownTimeout = 15 * time.Second
+const (
+	serviceName     = "carebridge-api"
+	shutdownTimeout = 15 * time.Second
+)
 
 func main() {
 	if err := run(); err != nil {
-		log.Fatal(err)
+		// The logger may not exist yet, so use the standard library to Log errors directly.
+		fmt.Fprintln(os.Stderr, "fatal: ", err)
+		os.Exit(1)
 	}
 
 }
@@ -33,13 +39,14 @@ func run() error {
 		return err
 	}
 
-	// %v uses Config.String(), which masks the database password.
-	log.Printf("configuration loaded: %v", cfg)
+	logger := logging.New(os.Stdout, serviceName, cfg.LogLevel, cfg.AppEnv)
+	slog.SetDefault(logger)
+	logger.Info("configuration loaded", "config", cfg) // password is masked
 
 	// Release mode silences Gin's debug banner and route table.
 	gin.SetMode(gin.ReleaseMode)
 
-	router, err := newRouter()
+	router, err := newRouter(logger)
 	if err != nil {
 		return err
 	}
@@ -61,7 +68,7 @@ func run() error {
 
 	serverErr := make(chan error, 1)
 	go func() {
-		log.Printf("HTTP server listening on %s", server.Addr)
+		logger.Info("http server listening", "addr", server.Addr)
 		// ListenAndServe always returns a non-nil error. ErrServerClosed only means Shutdown was called, which is the normal way to stop.
 		if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
@@ -75,7 +82,7 @@ func run() error {
 		stop() // restore default behaviour: a second Ctrl+C kills the process
 	}
 
-	log.Println("shutdown signal received, finishing in-flight requests")
+	logger.Info("shutdown signal received, finishing in-flight requests")
 
 	// A fresh context: ctx is already cancelled and would abort Shutdown at once.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
@@ -84,6 +91,6 @@ func run() error {
 		return fmt.Errorf("graceful shutdown: %w", err)
 	}
 
-	log.Println("server stopped cleanly")
+	logger.Info("server stopped cleanly")
 	return nil
 }

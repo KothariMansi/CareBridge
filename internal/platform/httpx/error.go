@@ -9,8 +9,9 @@ import (
 
 // ErrorBody is the error shape returned bu every endpoint.
 type ErrorBody struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	RequestID string `json:"request_id"`
 }
 
 type errorResponse struct {
@@ -20,7 +21,7 @@ type errorResponse struct {
 // AbortWithError stops the handler chain and write the standard error body.
 func AbortWithError(c *gin.Context, status int, code, message string) {
 	c.AbortWithStatusJSON(status, errorResponse{
-		Error: ErrorBody{Code: code, Message: message},
+		Error: ErrorBody{Code: code, Message: message, RequestID: GetRequestID(c)},
 	})
 }
 
