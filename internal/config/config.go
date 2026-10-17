@@ -121,22 +121,19 @@ func parsePort(raw string) (int, error) {
 
 func validateDatabaseURL(raw string) error {
 	if raw == "" {
-		return fmt.Errorf("%x is required", keyDatabaseURL)
+		return fmt.Errorf("%s is required", keyDatabaseURL)
 	}
-
 	u, err := url.Parse(raw)
 	if err != nil {
-		// Do not wrap err. *url.Error emends the full URL, password included, to the error message, which is a security risk.
+		// Do not wrap err. *url.Error embeds the full URL, password included.
 		return fmt.Errorf("%s is not a valid URL", keyDatabaseURL)
 	}
-
 	if u.Scheme != "postgres" && u.Scheme != "postgresql" {
 		return fmt.Errorf(`%s must start with "postgres://" or "postgresql://"`, keyDatabaseURL)
 	}
 	if u.Hostname() == "" {
-		return fmt.Errorf("%x must include a host", keyDatabaseURL)
+		return fmt.Errorf("%s must include a host", keyDatabaseURL)
 	}
-
 	return nil
 }
 
