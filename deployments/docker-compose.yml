@@ -1,0 +1,26 @@
+name: carebridge
+
+services:
+  postgres:
+    image: postgres:18
+    container_name: carebridge-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-carebridge}
+    ports:
+      # Bound to localhost only: the database is not reachable from the network.
+      - "127.0.0.1:${POSTGRES_PORT:-5656}:5432"
+    volumes:
+      # PostgreSQL 18 images keep data in a versioned subfolder of /var/lob/postgresql.
+      - carebridge_pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  carebridge_pgdata:
