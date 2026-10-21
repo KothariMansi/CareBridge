@@ -1,6 +1,10 @@
 package config
 
 import (
+	"bytes"
+	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -134,5 +138,76 @@ func TestLoad(t *testing.T) {
 				t.Errorf("Addr() = %q, want %q", cfg.Addr(), tc.wantAddress)
 			}
 		})
+	}
+}
+
+func TestLoad_ErrorNeverContainsThePassword(t *testing.T) {
+	// %zz is an invalid escape, so url.Parse fails and its error would
+	// normally echo the whole URL, password included.
+	setEnv(t, map[string]string{keyDatabaseURL: "postgres://root:s3cr3t@%zz"})
+
+	_, err := Load("")
+	if err == nil {
+		t.Fatal("Load() = nil error, want error")
+	}
+	if strings.Contains(err.Error(), "s3cr3t") {
+		t.Fatalf("error leaks the password: %q", err.Error())
+	}
+}
+
+func TestLoad_EnvFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env")
+	content := "DATABASE_URL=" + validDB + "\nHTTP_PORT=9090\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("files values are used", func(t *testing.T) {
+		setEnv(t, nil)
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatalf("Load() undexpected error: %v", err)
+		}
+		if cfg.HTTPPort != 9090 {
+			t.Errorf("HTTPPort = %d, want 9090", cfg.HTTPPort)
+		}
+	})
+
+	t.Run("environment overrides the file", func(t *testing.T) {
+		setEnv(t, map[string]string{keyHTTPPort: "7000"})
+		cfg, err := Load(path)
+		if err != nil {
+			t.Fatalf("Load() unexpected error: %v", err)
+		}
+		if cfg.HTTPPort != 7000 {
+			t.Errorf("HTTPPort = %d, want 7000", cfg.HTTPPort)
+		}
+	})
+
+	t.Run("a missing file is not an error", func(t *testing.T) {
+		setEnv(t, map[string]string{keyDatabaseURL: validDB})
+		if _, err := Load(filepath.Join(dir, "does-not-exist.env")); err != nil {
+			t.Fatalf("Load() unexpected error: %v", err)
+		}
+	})
+}
+
+func TestConfig_NeverPrintsThePassword(t *testing.T) {
+	cfg := Config{AppEnv: "development", HTTPPort: 8080, LogLevel: "info", DatabaseURL: validDB}
+	if got := cfg.String(); strings.Contains(got, "secret") {
+		t.Errorf("String() leaks the password: %q", got)
+	}
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, nil))
+	logger.Info("config loaded", "config", cfg)
+
+	out := buf.String()
+	if strings.Contains(out, "secret") {
+		t.Errorf("slog output leaks the password: %s", out)
+	}
+	if !strings.Contains(out, "xxxxx") {
+		t.Errorf("slog output does not contain the redacted password: %s", out)
 	}
 }
