@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/KothariMansi/carebridge/internal/config"
+	"github.com/KothariMansi/carebridge/internal/platform/database"
 	"github.com/KothariMansi/carebridge/internal/platform/logging"
 	"github.com/gin-gonic/gin"
 )
@@ -43,10 +44,24 @@ func run() error {
 	slog.SetDefault(logger)
 	logger.Info("configuration loaded", "config", cfg) // password is masked
 
+	// ctx is cancelled on Ctrl+C (SIGINT) or SIGTERM (what Docker and
+	// Kubernetes send when stopping a container). It is created before the
+	// database connection so Ctrl+C also interrupts a slow startup.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGINT)
+	defer stop()
+
+	pool, err := database.NewPool(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("connect to database: %v", err)
+	}
+
+	defer pool.Close()
+	logger.Info("database connected")
+
 	// Release mode silences Gin's debug banner and route table.
 	gin.SetMode(gin.ReleaseMode)
 
-	router, err := newRouter(logger)
+	router, err := newRouter(logger, pool)
 	if err != nil {
 		return err
 	}
@@ -61,10 +76,6 @@ func run() error {
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
-
-	// ctx is cancelled on Ctrl+C (SIGINT) or SIGTERM, which is what docker and Kubernetes send when stopping a container.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	serverErr := make(chan error, 1)
 	go func() {

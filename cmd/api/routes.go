@@ -9,7 +9,7 @@ import (
 )
 
 // newRouter builds the Gin Engine and register every route and middleware.
-func newRouter(logger *slog.Logger) (*gin.Engine, error) {
+func newRouter(logger *slog.Logger, db httpx.Pinger) (*gin.Engine, error) {
 	r := gin.New()
 
 	// Trust no proxy header, so the client IP is the real TCP peer. This also removes Gin's "you trusted all proxies" warning.
@@ -29,6 +29,7 @@ func newRouter(logger *slog.Logger) (*gin.Engine, error) {
 	r.Use(httpx.RequestID(), httpx.AccessLog(logger), httpx.Recovery(logger))
 
 	r.GET("/healthz", httpx.Healthz)
+	r.GET("/readyz", httpx.Readyz(logger, db))
 
 	return r, nil
 

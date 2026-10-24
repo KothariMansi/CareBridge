@@ -1,0 +1,7 @@
+{
+    "files.eol": "\n",
+    "go.testEnvFile": "${workspaceFolder}/.env",
+    "[go]": {
+        "editor.formatOnSave": true
+    }
+}
