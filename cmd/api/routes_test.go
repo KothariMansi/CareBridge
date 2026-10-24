@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,12 +19,25 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
-// newTestRouter returns a router whose log output is captured in a buffer.
+type fakePinger struct {
+	err error
+}
+
+func (f fakePinger) Ping(context.Context) error {
+	return f.err
+}
+
 func newTestRouter(t *testing.T) (*gin.Engine, *bytes.Buffer) {
+	t.Helper()
+	return newTestRouterWith(t, fakePinger{})
+}
+
+// newTestRouter returns a router whose log output is captured in a buffer.
+func newTestRouterWith(t *testing.T, db fakePinger) (*gin.Engine, *bytes.Buffer) {
 	t.Helper()
 	var buf bytes.Buffer
 	logger := logging.New(&buf, "carebridge-api", "debug", "test")
-	r, err := newRouter(logger)
+	r, err := newRouter(logger, db)
 	if err != nil {
 		t.Fatalf("new Router: %v", err)
 	}
@@ -78,6 +93,45 @@ func TestHealthz(t *testing.T) {
 	}
 	if body["status"] != "ok" {
 		t.Errorf(`body["status"] = %q, want ok`, body["status"])
+	}
+}
+
+func TestReadyz(t *testing.T) {
+	r, _ := newTestRouter(t)
+	rec := do(r, http.MethodGet, "/readyz", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("body is not JSON: %v", err)
+	}
+	if body["status"] != "ready" {
+		t.Errorf(`body["status"] = %q, want "ready"`, body["status"])
+	}
+}
+
+func TestReadyDatabaseDown(t *testing.T) {
+	r, logs := newTestRouterWith(t, fakePinger{err: errors.New("dial tcp 10.0.0.5:5432: connection refused")})
+	rec := do(r, http.MethodGet, "/readyz", nil)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", rec.Code)
+	}
+	if env := decodeError(t, rec); env.Error.Code != "NOT_READY" {
+		t.Errorf("code = %q, want NOT_READY", env.Error.Code)
+	}
+	if strings.Contains(rec.Body.String(), "10.0.0.5") {
+		t.Errorf("response leaks the database error: %s", rec.Body.String())
+	}
+	if !strings.Contains(logs.String(), "readiness check failed") {
+		t.Errorf("the failure should be logged server-side, logs: %s", logs.String())
+	}
+}
+
+func TestLivenessIgnoresDatabase(t *testing.T) {
+	r, _ := newTestRouterWith(t, fakePinger{err: errors.New("db down")})
+	if rec := do(r, http.MethodGet, "/healthz", nil); rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 even when the database is down", rec.Code)
 	}
 }
 
