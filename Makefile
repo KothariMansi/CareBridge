@@ -1,4 +1,4 @@
-.PHONY: help fmt fmt-check vet test build run check seed db-up db-down migrate-up migrate-down migrate-version migrate-new
+.PHONY: help fmt fmt-check vet test build run check seed sqlc db-up db-down migrate-up migrate-down migrate-version migrate-new
 
 # Read from .env locally; CI sets DATABASE_URL in the environment instead.
 DATABASE_URL ?= $(shell grep '^DATABASE_URL=' .env | cut -d= -f2- | tr -d '\r')
@@ -30,6 +30,9 @@ check: fmt-check vet test build ## Everything CI checks, locally
 
 seed: ## Load synthetic development data (safe to run repeatedly)
 	docker exec -i carebridge-postgres sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -v ON_ERROR_STOP=1' < db/seed/dev_seed.sql
+
+sqlc: ## Regenerate the database code from db/query
+	sqlc generate
 
 db-up: ## Start PostgreSQL
 	$(COMPOSE) up -d
